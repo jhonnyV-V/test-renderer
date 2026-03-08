@@ -6,7 +6,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:os"
 
-TGAHeader :: struct {
+TGAHeader :: struct #packed {
 	idlength:        u8,
 	colormaptype:    u8,
 	datatypecode:    u8,
@@ -20,9 +20,10 @@ TGAHeader :: struct {
 	bitsperpixel:    u8,
 	imagedescriptor: u8,
 }
+
 TGAColor :: struct {
-	bgra:    [4]u8,
-	bytespp: u8,
+	bgra:          [4]u8,
+	bytesPerPixel: u8,
 }
 
 TGAFormat :: enum u8 {
@@ -33,26 +34,151 @@ TGAFormat :: enum u8 {
 
 TGAImage :: struct {
 	width, height: int,
-	bpp:           u8,
+	bytesPerPixel: u8,
 	data:          [dynamic]u8,
 }
 
-initTGAImage :: proc(w, h: int, bpp: TGAFormat) -> TGAImage {
-	total_bytes := int(w) * int(h) * int(bpp)
+initTGAImage :: proc(w, h: int, bytesPerPixel: TGAFormat) -> TGAImage {
+	total_bytes := int(w) * int(h) * int(bytesPerPixel)
 
 	img := TGAImage {
-		width  = w,
-		height = h,
-		bpp    = u8(bpp),
-		data   = make([dynamic]u8, total_bytes),
+		width         = w,
+		height        = h,
+		bytesPerPixel = u8(bytesPerPixel),
+		data          = make([dynamic]u8, total_bytes),
 	}
 
 	return img
 }
 
-readTgaFile :: proc(filename: string) {}
+readTgaFile :: proc(img: ^TGAImage, filename: string) -> bool {
+	file, err := os.open(filename, os.O_RDONLY)
+	if err != nil {
+		fmt.eprintln("Can't open file:", filename)
+		return false
+	}
+	defer os.close(file)
+	stream := os.to_stream(file)
 
-writeTgaFile :: proc(filename: string, vflip: bool, rle: bool) {}
+	header: TGAHeader
+	header_bytes := mem.ptr_to_bytes(&header)
+	if _, read_err := io.read(stream, header_bytes); read_err != nil {
+		fmt.eprintln("An error occurred while reading the header")
+		return false
+	}
+
+	img.width = int(header.width)
+	img.height = int(header.height)
+	img.bytesPerPixel = header.bitsperpixel >> 3
+
+	if img.width <= 0 {
+		fmt.eprintln("Bad width value")
+		return false
+	}
+
+	if img.height <= 0 {
+		fmt.eprintln("Bad height value")
+		return false
+	}
+
+	if (img.bytesPerPixel != 1 && img.bytesPerPixel != 3 && img.bytesPerPixel != 4) {
+		fmt.eprintln("Bad bpp value")
+		return false
+	}
+
+	nBytes := int(img.bytesPerPixel) * int(img.width) * int(img.height)
+	resize(&img.data, nBytes)
+
+	if header.datatypecode == 2 || header.datatypecode == 3 {
+		if _, read_err := io.read(stream, img.data[:]); read_err != nil {
+			fmt.eprintln("An error occurred while reading the raw data")
+			return false
+		}
+	} else if header.datatypecode == 10 || header.datatypecode == 11 {
+		// 10: RLE RGB, 11: RLE Grayscale
+		if !loadRleData(img, stream) {
+			fmt.eprintln("An error occurred while reading the RLE data")
+			return false
+		}
+	} else {
+		fmt.eprintf("Unknown file format: %d\n", header.datatypecode)
+		return false
+	}
+
+	// TGA Image Descriptor byte:
+	// bit 4: horizontal flip (right-to-left)
+	// bit 5: vertical flip (top-to-bottom)
+	if (header.imagedescriptor & 0x20) == 0 {
+		flipVertically(img)
+	}
+	if (header.imagedescriptor & 0x10) != 0 {
+		flipHorizontally(img)
+	}
+
+	fmt.eprintf("read %dx%d/%d\n", img.width, img.height, img.bytesPerPixel * 8)
+	return true
+}
+
+writeTgaFile :: proc(img: ^TGAImage, filename: string, vflip: bool, rle: bool) -> bool {
+	DEVELOPER_AREA_REF := [4]u8{0, 0, 0, 0}
+	EXTENSION_AREA_REF := [4]u8{0, 0, 0, 0}
+	// The signature "TRUEVISION-XFILE.\0"
+	FOOTER := "TRUEVISION-XFILE.\x00"
+
+	file, err := os.open(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC)
+	if err != nil {
+		fmt.eprintln("Can't open file:", filename)
+		return false
+	}
+	defer os.close(file)
+	stream := os.to_stream(file)
+
+	header := TGAHeader {
+		bitsperpixel    = img.bytesPerPixel << 3,
+		width           = u16(img.width),
+		height          = u16(img.height),
+		imagedescriptor = vflip ? 0x00 : 0x20, // top-left or bottom-left origin
+	}
+
+	if img.bytesPerPixel == u8(TGAFormat.GRAYSCALE) {
+		header.datatypecode = (rle ? 11 : 3)
+	} else {
+		header.datatypecode = (rle ? 10 : 2)
+	}
+
+	header_bytes := mem.ptr_to_bytes(&header)
+	if _, err = io.write(stream, header_bytes); err != nil {
+		fmt.eprintln("Can't dump the tga file")
+		return false
+	}
+
+	if !rle {
+		if _, err = io.write(stream, img.data[:]); err != nil {
+			fmt.eprintln("Can't dump the tga file")
+			return false
+		}
+	} else {
+		if !unloadRleData(img, stream) {
+			fmt.eprintln("Can't dump the tga file")
+			return false
+		}
+	}
+
+	if _, err = io.write(stream, DEVELOPER_AREA_REF[:]); err != nil {
+		fmt.eprintln("Can't dump the tga file")
+		return false
+	}
+	if _, err = io.write(stream, EXTENSION_AREA_REF[:]); err != nil {
+		fmt.eprintln("Can't dump the tga file")
+		return false
+	}
+	if _, err = io.write(stream, transmute([]u8)FOOTER); err != nil {
+		fmt.eprintln("Can't dump the tga file")
+		return false
+	}
+
+	return true
+}
 
 
 getColor :: proc(img: ^TGAImage, x, y: int) -> TGAColor {
@@ -61,13 +187,13 @@ getColor :: proc(img: ^TGAImage, x, y: int) -> TGAColor {
 	}
 
 	color: TGAColor = {
-		bgra    = {0, 0, 0, 0},
-		bytespp = img.bpp,
+		bgra          = {0, 0, 0, 0},
+		bytesPerPixel = img.bytesPerPixel,
 	}
 
-	offset := (x + y * img.width) * int(img.bpp)
+	offset := (x + y * img.width) * int(img.bytesPerPixel)
 
-	for i in 0 ..< img.bpp {
+	for i in 0 ..< img.bytesPerPixel {
 		color.bgra[i] = img.data[offset + int(i)]
 	}
 
@@ -79,8 +205,8 @@ setColor :: proc(img: ^TGAImage, x, y: int, color: ^TGAColor) {
 		return
 	}
 
-	offset := (x + y * img.width) * int(img.bpp)
-	mem.copy(&img.data[offset], &color.bgra[0], int(img.bpp))
+	offset := (x + y * img.width) * int(img.bytesPerPixel)
+	mem.copy(&img.data[offset], &color.bgra[0], int(img.bytesPerPixel))
 }
 
 loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
@@ -88,15 +214,10 @@ loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 	currentPixel := 0
 	currentByte := 0
 
-	totalBytes := numberOfPixels * int(img.bpp)
+	totalBytes := numberOfPixels * int(img.bytesPerPixel)
 	resize(&img.data, totalBytes)
 
-	arena: virtual.Arena
-	_ = virtual.arena_init_static(&arena, uint(totalBytes * 4))
-	arena_allocator := virtual.arena_allocator(&arena)
-	defer free_all(arena_allocator)
-
-	colorBuffer := make([]u8, int(img.bpp), arena_allocator)
+	colorBuffer := [4]u8{}
 
 	for currentPixel < numberOfPixels {
 		headerBuff: [1]u8
@@ -112,13 +233,15 @@ loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 			//non compress packet
 			chunkHeader += 1
 			for _ in 0 ..< chunkHeader {
-				if _, readError := io.read(file, colorBuffer); readError != nil {
+				if _, readError := io.read(file, colorBuffer[:img.bytesPerPixel]);
+				   readError != nil {
 					fmt.eprintln("Error: An error occurred while reading the pixel data")
 					return false
 				}
 
-				for t in 0 ..< int(img.bpp) {
+				for t in 0 ..< int(img.bytesPerPixel) {
 					img.data[currentByte] = colorBuffer[t]
+					currentByte += 1
 				}
 
 				currentPixel += 1
@@ -130,13 +253,13 @@ loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 		} else {
 			//rle packet
 			chunkHeader -= 127
-			if _, readError := io.read(file, colorBuffer); readError != nil {
+			if _, readError := io.read(file, colorBuffer[:img.bytesPerPixel]); readError != nil {
 				fmt.eprintln("Error: An error occurred while reading the pixel data")
 				return false
 			}
 
 			for i in 0 ..< chunkHeader {
-				for t in 0 ..< img.bpp {
+				for t in 0 ..< img.bytesPerPixel {
 					img.data[currentByte] = colorBuffer[t]
 					currentByte += 1
 				}
@@ -157,22 +280,20 @@ unloadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 	numberOfPixels := int(img.width) * int(img.height)
 	currentPixel := 0
 	for currentPixel < numberOfPixels {
-		chunkStart := currentPixel * int(img.bpp)
-		currentByte := currentPixel * int(img.bpp)
+		chunkStart := currentPixel * int(img.bytesPerPixel)
+		currentByte := currentPixel * int(img.bytesPerPixel)
 		runLen := 1
 		isRawBytes := true
 
-		for currentPixel < numberOfPixels && runLen < maxChunkLen {
+		for (currentPixel + runLen) < numberOfPixels && runLen < maxChunkLen {
 			isSequenceEqual := true
 
-			for t in 0 ..< int(img.bpp) {
-				if img.data[currentByte + t] != img.data[currentByte + t + int(img.bpp)] {
-					isSequenceEqual = false
-					break
-				}
+			for t := 0; isSequenceEqual && (t < int(img.bytesPerPixel)); t += 1 {
+				isSequenceEqual =
+					img.data[currentByte + t] == img.data[currentByte + t + int(img.bytesPerPixel)]
 			}
 
-			currentByte += int(img.bpp)
+			currentByte += int(img.bytesPerPixel)
 			if runLen == 1 {
 				isRawBytes = !isSequenceEqual
 			}
@@ -196,7 +317,7 @@ unloadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 			return false
 		}
 
-		bytesToWrite := isRawBytes ? runLen * int(img.bpp) : int(img.bpp)
+		bytesToWrite := isRawBytes ? runLen * int(img.bytesPerPixel) : int(img.bytesPerPixel)
 		if _, err := io.write(file, img.data[chunkStart:chunkStart + bytesToWrite]); err != nil {
 			return false
 		}
@@ -206,11 +327,11 @@ unloadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 }
 
 flipHorizontally :: proc(img: ^TGAImage) {
-	for i := 0; i < img.width / 2; i += 1 {
-		for j := 0; j < img.height; j += 1 {
-			for b: u8 = 0; b < img.bpp; b += 1 {
-				index1 := (i + j * img.width) * int(img.bpp) + int(b)
-				index2 := (img.width - 1 - i + j * img.width) * int(img.bpp) + int(b)
+	for col := 0; col < img.width / 2; col += 1 {
+		for row := 0; row < img.height; row += 1 {
+			for b: u8 = 0; b < img.bytesPerPixel; b += 1 {
+				index1 := (col + row * img.width) * int(img.bytesPerPixel) + int(b)
+				index2 := (img.width - 1 - col + row * img.width) * int(img.bytesPerPixel) + int(b)
 
 				img.data[index1], img.data[index2] = img.data[index2], img.data[index1]
 			}
@@ -219,11 +340,12 @@ flipHorizontally :: proc(img: ^TGAImage) {
 }
 
 flipVertically :: proc(img: ^TGAImage) {
-	for i := 0; i < img.width; i += 1 {
-		for j := 0; j < img.height / 2; j += 1 {
-			for b: u8 = 0; b < img.bpp; b += 1 {
-				index1 := (i + j * img.width) * int(img.bpp) + int(b)
-				index2 := (i + (img.height - 1 - j) * img.width) * int(img.bpp) + int(b)
+	for col := 0; col < img.width; col += 1 {
+		for row := 0; row < img.height / 2; row += 1 {
+			for b: u8 = 0; b < img.bytesPerPixel; b += 1 {
+				index1 := (col + row * img.width) * int(img.bytesPerPixel) + int(b)
+				index2 :=
+					(col + (img.height - 1 - row) * img.width) * int(img.bytesPerPixel) + int(b)
 
 				img.data[index1], img.data[index2] = img.data[index2], img.data[index1]
 			}

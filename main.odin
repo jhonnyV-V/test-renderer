@@ -33,5 +33,5 @@ main :: proc() {
 	setColor(&frameBuffer, bx, by, &white)
 	setColor(&frameBuffer, cx, cy, &white)
 
-	writeTgaFile("framebuffer.tga", true, true)
+	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
 }
