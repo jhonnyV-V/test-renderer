@@ -193,9 +193,7 @@ getColor :: proc(img: ^TGAImage, x, y: int) -> TGAColor {
 
 	offset := (x + y * img.width) * int(img.bytesPerPixel)
 
-	for i in 0 ..< img.bytesPerPixel {
-		color.bgra[i] = img.data[offset + int(i)]
-	}
+	mem.copy(&color.bgra, &img.data[offset], int(img.bytesPerPixel))
 
 	return color
 }
@@ -239,10 +237,8 @@ loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 					return false
 				}
 
-				for t in 0 ..< int(img.bytesPerPixel) {
-					img.data[currentByte] = colorBuffer[t]
-					currentByte += 1
-				}
+				mem.copy(&img.data[currentByte], &colorBuffer, int(img.bytesPerPixel))
+				currentByte += int(img.bytesPerPixel)
 
 				currentPixel += 1
 				if currentPixel > numberOfPixels {
@@ -259,10 +255,9 @@ loadRleData :: proc(img: ^TGAImage, file: io.Stream) -> bool {
 			}
 
 			for i in 0 ..< chunkHeader {
-				for t in 0 ..< img.bytesPerPixel {
-					img.data[currentByte] = colorBuffer[t]
-					currentByte += 1
-				}
+				mem.copy(&img.data[currentByte], &colorBuffer, int(img.bytesPerPixel))
+				currentByte += int(img.bytesPerPixel)
+
 				currentPixel += 1
 				if currentPixel > numberOfPixels {
 					fmt.eprintln("Error: Too many pixels read")
