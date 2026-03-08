@@ -2,8 +2,8 @@ package main
 
 import "core:fmt"
 import "core:io"
+import "core:math"
 import "core:mem"
-import "core:mem/virtual"
 import "core:os"
 
 TGAHeader :: struct #packed {
@@ -344,6 +344,32 @@ flipVertically :: proc(img: ^TGAImage) {
 
 				img.data[index1], img.data[index2] = img.data[index2], img.data[index1]
 			}
+		}
+	}
+}
+
+// END OF library code
+
+drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
+	ax, ay, bx, by := axp, ayp, bxp, byp
+	steep := math.abs(ax - bx) < math.abs(ay - by)
+	if steep {
+		ax, ay = ay, ax
+		bx, by = by, bx
+	}
+
+	if ax > bx {
+		ax, bx = bx, ax
+		ay, by = by, ay
+	}
+
+	for x := ax; x <= bx; x += 1 {
+		t: f32 = f32(x - ax) / f32(bx - ax)
+		y := int(math.round(f32(ay) + f32(by - ay) * t))
+		if (steep) { 	//if transpose detranspose
+			setColor(img, y, x, color)
+		} else {
+			setColor(img, x, y, color)
 		}
 	}
 }
