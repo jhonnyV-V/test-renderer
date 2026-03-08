@@ -8,10 +8,11 @@ import "core:strconv"
 import "core:strings"
 
 Vector3 :: [3]f32
+Vector2 :: [3]f32
 
 Model :: struct {
 	vertices: [dynamic]Vector3,
-	faces:    [dynamic]Vector3,
+	faces:    [dynamic][3]int,
 	name:     string,
 }
 
@@ -54,12 +55,18 @@ readObj :: proc(filename: string) -> Model {
 		valueString := strings.Builder{}
 		valueCounter := 0
 		vec := Vector3{}
+		face := [3]int{}
 		ignore := false
+		isFace := line[0] == 'f'
 
 		for i := offset; i < len(line) && valueCounter < 3; i += 1 {
 			if bytes.is_space(rune(line[i])) {
 				ignore = false
-				vec[valueCounter], _ = strconv.parse_f32(strings.to_string(valueString))
+				if isFace {
+					face[valueCounter], _ = strconv.parse_int(strings.to_string(valueString))
+				} else {
+					vec[valueCounter], _ = strconv.parse_f32(strings.to_string(valueString))
+				}
 				valueCounter += 1
 				strings.builder_reset(&valueString)
 				continue
@@ -82,7 +89,10 @@ readObj :: proc(filename: string) -> Model {
 		if line[0] == 'v' {
 			append(&model.vertices, vec)
 		} else if line[0] == 'f' {
-			append(&model.faces, vec)
+			face.x -= 1
+			face.y -= 1
+			face.z -= 1
+			append(&model.faces, face)
 		}
 	}
 

@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:os"
 
 white := TGAColor {
 	bgra = {255, 255, 255, 255},
@@ -19,30 +20,34 @@ yellow := TGAColor {
 }
 
 main :: proc() {
-	// width := 64
-	// heigth := 64
-	//
-	// frameBuffer := initTGAImage(width, heigth, .RGB)
-	//
-	// ax := 7
-	// ay := 3
-	// bx := 12
-	// by := 37
-	// cx := 62
-	// cy := 53
-	//
-	// drawLine(&frameBuffer, ax, ay, bx, by, &blue)
-	// drawLine(&frameBuffer, cx, cy, bx, by, &green)
-	// drawLine(&frameBuffer, cx, cy, ax, ay, &yellow)
-	// drawLine(&frameBuffer, ax, ay, cx, cy, &red)
-	//
-	// setColor(&frameBuffer, ax, ay, &white)
-	// setColor(&frameBuffer, bx, by, &white)
-	// setColor(&frameBuffer, cx, cy, &white)
-	//
-	// writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
+	width := 800
+	heigth := 800
+	filename := "./diablo3_pose/test.obj"
 
-	obj := readObj("./diablo3_pose/diablo3_pose.obj")
+	fmt.println(os.args[1])
 
-	fmt.printf("faces:%d, vertices:%d\n", len(obj.faces), len(obj.vertices))
+	frameBuffer := initTGAImage(width, heigth, .RGB)
+
+	if os.args[1] != "" {
+		filename = os.args[1]
+	}
+
+	obj := readObj(filename)
+
+	for face in obj.faces {
+		a := projectVector(obj.vertices[face[0]], width, heigth)
+		b := projectVector(obj.vertices[face[1]], width, heigth)
+		c := projectVector(obj.vertices[face[2]], width, heigth)
+
+		drawLine(&frameBuffer, a.x, a.y, b.x, b.y, &red)
+		drawLine(&frameBuffer, b.x, b.y, c.x, c.y, &red)
+		drawLine(&frameBuffer, c.x, c.y, a.x, a.y, &red)
+	}
+
+	for vec in obj.vertices {
+		point := projectVector(vec, width, heigth)
+		setColor(&frameBuffer, point.x, point.y, &white)
+	}
+
+	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
 }

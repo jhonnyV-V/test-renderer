@@ -373,3 +373,14 @@ drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
 		}
 	}
 }
+
+// First of all, (x,y) is an orthogonal projection of the vector (x,y,z).
+projectVector :: proc(vec: Vector3, width, height: int) -> [2]int {
+	projection: [2]int = {}
+	// Second, since the input models are scaled to have fit in the [-1,1]^3 world coordinates,
+	projection[0] = int((vec.x + 1.) * f32(width) / 2)
+	// we want to shift the vector (x,y) and then scale it to span the entire screen.
+	projection[1] = int((vec.y + 1.) * f32(height) / 2)
+
+	return projection
+}
