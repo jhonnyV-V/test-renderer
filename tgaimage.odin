@@ -384,3 +384,39 @@ projectVector :: proc(vec: Vector3, width, height: int) -> [2]int {
 
 	return projection
 }
+
+drawTriangle :: proc(img: ^TGAImage, a1, b1, c1: [2]int, color: ^TGAColor) {
+	a, b, c := a1, b1, c1
+	if a.y > b.y {
+		a, b = b, a
+	}
+	if a.y > c.y {
+		a, c = c, a
+	}
+	if b.y > c.y {
+		b, c = c, b
+	}
+	totalHeight := c.y - a.y
+	if a.y != b.y {
+		segmentHeight := b.y - a.y
+		for currentY := a.y; currentY <= b.y; currentY += 1 {
+			x1 := a.x + ((c.x - a.x) * (currentY - a.y)) / totalHeight
+			x2 := a.x + ((b.x - a.x) * (currentY - a.y)) / segmentHeight
+
+			for currentX := math.min(x1, x2); currentX <= math.max(x1, x2); currentX += 1 {
+				setColor(img, currentX, currentY, color)
+			}
+		}
+	}
+	if b.y != c.y {
+		segmentHeight := c.y - b.y
+		for currentY := b.y; currentY <= c.y; currentY += 1 {
+			x1 := a.x + ((c.x - a.x) * (currentY - a.y)) / totalHeight
+			x2 := b.x + ((c.x - b.x) * (currentY - b.y)) / segmentHeight
+
+			for currentX := math.min(x1, x2); currentX <= math.max(x1, x2); currentX += 1 {
+				setColor(img, currentX, currentY, color)
+			}
+		}
+	}
+}
