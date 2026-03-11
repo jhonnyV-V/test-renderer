@@ -385,38 +385,31 @@ projectVector :: proc(vec: Vector3, width, height: int) -> [2]int {
 	return projection
 }
 
-drawTriangle :: proc(img: ^TGAImage, a1, b1, c1: [2]int, color: ^TGAColor) {
-	a, b, c := a1, b1, c1
-	if a.y > b.y {
-		a, b = b, a
-	}
-	if a.y > c.y {
-		a, c = c, a
-	}
-	if b.y > c.y {
-		b, c = c, b
-	}
-	totalHeight := c.y - a.y
-	if a.y != b.y {
-		segmentHeight := b.y - a.y
-		for currentY := a.y; currentY <= b.y; currentY += 1 {
-			x1 := a.x + ((c.x - a.x) * (currentY - a.y)) / totalHeight
-			x2 := a.x + ((b.x - a.x) * (currentY - a.y)) / segmentHeight
 
-			for currentX := math.min(x1, x2); currentX <= math.max(x1, x2); currentX += 1 {
-				setColor(img, currentX, currentY, color)
-			}
-		}
-	}
-	if b.y != c.y {
-		segmentHeight := c.y - b.y
-		for currentY := b.y; currentY <= c.y; currentY += 1 {
-			x1 := a.x + ((c.x - a.x) * (currentY - a.y)) / totalHeight
-			x2 := b.x + ((c.x - b.x) * (currentY - b.y)) / segmentHeight
+signedTriangleArea :: proc(a, b, c: [2]int) -> f32 {
+	return(
+		0.5 *
+		f32((b.y - a.y) * (b.x + a.x) + (c.y - b.y) * (c.x + b.x) + (a.y - c.y) * (a.x + c.x)) \
+	)
+}
 
-			for currentX := math.min(x1, x2); currentX <= math.max(x1, x2); currentX += 1 {
-				setColor(img, currentX, currentY, color)
+drawTriangle :: proc(img: ^TGAImage, a, b, c: [2]int, color: ^TGAColor) {
+	boundingBoxMin := [2]int{math.min(math.min(a.x, b.x), c.x), math.min(math.min(a.y, b.y), c.y)}
+	boundingBoxMax := [2]int{math.max(math.max(a.x, b.x), c.x), math.max(math.max(a.y, b.y), c.y)}
+	totalArea := signedTriangleArea(a, b, c)
+	if totalArea < 1 {
+		return
+	}
+
+	for x := boundingBoxMin.x; x <= boundingBoxMax.x; x += 1 {
+		for y := boundingBoxMin.y; y <= boundingBoxMax.y; y += 1 {
+			alpha := signedTriangleArea([2]int{x, y}, b, c) / totalArea
+			beta := signedTriangleArea([2]int{x, y}, c, a) / totalArea
+			gamma := signedTriangleArea([2]int{x, y}, a, b) / totalArea
+			if alpha < 0 || beta < 0 || gamma < 0 {
+				continue // negative barycentric coordinate => the pixel is outside the triangle
 			}
+			setColor(img, x, y, color)
 		}
 	}
 }

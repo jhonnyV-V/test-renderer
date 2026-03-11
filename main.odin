@@ -20,13 +20,15 @@ yellow := TGAColor {
 }
 
 main :: proc() {
-	width := 800
-	heigth := 800
-	frameBuffer := initTGAImage(width, heigth, .RGB)
+	// width := 800
+	// heigth := 800
+	// frameBuffer := initTGAImage(width, heigth, .RGB)
+	//
+	// drawTriangle(&frameBuffer, [2]int{7, 45}, [2]int{35, 100}, [2]int{45, 60}, &red)
+	// drawTriangle(&frameBuffer, [2]int{120, 35}, [2]int{90, 5}, [2]int{45, 110}, &white)
+	// drawTriangle(&frameBuffer, [2]int{115, 83}, [2]int{80, 90}, [2]int{85, 120}, &green)
+	//
+	// writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
 
-	drawTriangle(&frameBuffer, [2]int{7, 45}, [2]int{35, 100}, [2]int{45, 60}, &red)
-	drawTriangle(&frameBuffer, [2]int{120, 35}, [2]int{90, 5}, [2]int{45, 110}, &white)
-	drawTriangle(&frameBuffer, [2]int{115, 83}, [2]int{80, 90}, [2]int{85, 120}, &green)
-
-	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
+	drawObj()
 }

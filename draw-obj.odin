@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:math/rand"
 import "core:os"
 
 drawObj :: proc() {
@@ -23,13 +24,17 @@ drawObj :: proc() {
 		b := projectVector(obj.vertices[face[1]], width, heigth)
 		c := projectVector(obj.vertices[face[2]], width, heigth)
 
-		drawLine(&frameBuffer, a.x, a.y, b.x, b.y, &red)
-		drawLine(&frameBuffer, b.x, b.y, c.x, c.y, &red)
-		drawLine(&frameBuffer, c.x, c.y, a.x, a.y, &red)
+		color := TGAColor {
+			bgra          = {
+				u8(rand.uint32_max(256)),
+				u8(rand.uint32_max(256)),
+				u8(rand.uint32_max(256)),
+				255,
+			},
+			bytesPerPixel = frameBuffer.bytesPerPixel,
+		}
+		drawTriangle(&frameBuffer, a, b, c, &color)
 	}
 
-	for vec in obj.vertices {
-		point := projectVector(vec, width, heigth)
-		setColor(&frameBuffer, point.x, point.y, &white)
-	}
+	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
 }
