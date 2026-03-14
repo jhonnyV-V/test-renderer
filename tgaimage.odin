@@ -375,12 +375,14 @@ drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
 }
 
 // First of all, (x,y) is an orthogonal projection of the vector (x,y,z).
-projectVector :: proc(vec: Vector3, width, height: int) -> [2]int {
-	projection: [2]int = {}
+projectVector :: proc(vec: Vector3, width, height: int) -> [3]int {
+	projection: [3]int = {}
 	// Second, since the input models are scaled to have fit in the [-1,1]^3 world coordinates,
 	projection[0] = int((vec.x + 1.) * f32(width) / 2)
 	// we want to shift the vector (x,y) and then scale it to span the entire screen.
 	projection[1] = int((vec.y + 1.) * f32(height) / 2)
+
+	projection[2] = int((vec.z + 1.) * f32(255) / 2)
 
 	return projection
 }
@@ -393,22 +395,39 @@ signedTriangleArea :: proc(a, b, c: [2]int) -> f32 {
 	)
 }
 
-drawTriangle :: proc(img: ^TGAImage, a, b, c: [2]int, color: ^TGAColor) {
-	boundingBoxMin := [2]int{math.min(math.min(a.x, b.x), c.x), math.min(math.min(a.y, b.y), c.y)}
-	boundingBoxMax := [2]int{math.max(math.max(a.x, b.x), c.x), math.max(math.max(a.y, b.y), c.y)}
-	totalArea := signedTriangleArea(a, b, c)
+drawTriangle :: proc(img: ^TGAImage, depthMap: ^TGAImage, a, b, c: [3]int, color: ^TGAColor) {
+	boundingBoxMin := [3]int {
+		math.min(math.min(a.x, b.x), c.x),
+		math.min(math.min(a.y, b.y), c.y),
+		0,
+	}
+	boundingBoxMax := [3]int {
+		math.max(math.max(a.x, b.x), c.x),
+		math.max(math.max(a.y, b.y), c.y),
+		0,
+	}
+	totalArea := signedTriangleArea([2]int{a.x, a.y}, [2]int{b.x, b.y}, [2]int{c.x, c.y})
 	if totalArea < 1 {
 		return
 	}
 
 	for x := boundingBoxMin.x; x <= boundingBoxMax.x; x += 1 {
 		for y := boundingBoxMin.y; y <= boundingBoxMax.y; y += 1 {
-			alpha := signedTriangleArea([2]int{x, y}, b, c) / totalArea
-			beta := signedTriangleArea([2]int{x, y}, c, a) / totalArea
-			gamma := signedTriangleArea([2]int{x, y}, a, b) / totalArea
+			alpha :=
+				signedTriangleArea([2]int{x, y}, [2]int{b.x, b.y}, [2]int{c.x, c.y}) / totalArea
+			beta :=
+				signedTriangleArea([2]int{x, y}, [2]int{c.x, c.y}, [2]int{a.x, a.y}) / totalArea
+			gamma :=
+				signedTriangleArea([2]int{x, y}, [2]int{a.x, a.y}, [2]int{b.x, b.y}) / totalArea
 			if alpha < 0 || beta < 0 || gamma < 0 {
 				continue // negative barycentric coordinate => the pixel is outside the triangle
 			}
+
+			blue := u8(alpha * f32(a.z) + beta * f32(b.z) + gamma * f32(c.z))
+			depthColor := TGAColor {
+				bgra = [4]u8{blue, 0, 0, 0},
+			}
+			setColor(depthMap, x, y, &depthColor)
 			setColor(img, x, y, color)
 		}
 	}
