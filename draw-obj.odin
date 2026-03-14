@@ -12,6 +12,7 @@ drawObj :: proc() {
 	fmt.println(os.args[1])
 
 	frameBuffer := initTGAImage(width, heigth, .RGB)
+	zbuffer := initTGAImage(width, heigth, .GRAYSCALE)
 
 	if os.args[1] != "" {
 		filename = os.args[1]
@@ -33,8 +34,9 @@ drawObj :: proc() {
 			},
 			bytesPerPixel = frameBuffer.bytesPerPixel,
 		}
-		drawTriangle(&frameBuffer, a, b, c, &color)
+		drawTriangle(&frameBuffer, &frameBuffer, a, b, c, &color)
 	}
 
 	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
+	writeTgaFile(&zbuffer, "zbuffer.tga", true, true)
 }
