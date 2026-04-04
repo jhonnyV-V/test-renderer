@@ -387,6 +387,26 @@ projectVector :: proc(vec: Vector3, width, height: int) -> [3]int {
 	return projection
 }
 
+rotateVector :: proc(value: Vector3) -> Vector3 {
+	// 30 grades
+	angle: f32 = math.PI / 6
+	cos := math.cos_f32(angle)
+	sin := math.sin_f32(angle)
+
+	// rotationMatrix := linalg.matrix3_rotate_f64(a, {0, 1, 0})
+	rotationMatrix := matrix[3, 3]f32{
+		cos, 0, sin,
+		0, 1, 0,
+		-sin, 0, cos,
+	}
+
+	return rotationMatrix * value
+}
+
+perspective :: proc(value: Vector3) -> Vector3 {
+	c: f32 = 3
+	return value / (1 - value.z / c)
+}
 
 signedTriangleArea :: proc(a, b, c: [2]int) -> f32 {
 	return(

@@ -14,16 +14,16 @@ drawObj :: proc() {
 	frameBuffer := initTGAImage(width, heigth, .RGB)
 	zbuffer := initTGAImage(width, heigth, .GRAYSCALE)
 
-	if os.args[1] != "" {
+	if len(os.args) > 1 && os.args[1] != "" {
 		filename = os.args[1]
 	}
 
 	obj := readObj(filename)
 
 	for face in obj.faces {
-		a := projectVector(obj.vertices[face[0]], width, heigth)
-		b := projectVector(obj.vertices[face[1]], width, heigth)
-		c := projectVector(obj.vertices[face[2]], width, heigth)
+		a := projectVector(perspective(rotateVector(obj.vertices[face[0]])), width, heigth)
+		b := projectVector(perspective(rotateVector(obj.vertices[face[1]])), width, heigth)
+		c := projectVector(perspective(rotateVector(obj.vertices[face[2]])), width, heigth)
 
 		color := TGAColor {
 			bgra          = {
@@ -34,7 +34,7 @@ drawObj :: proc() {
 			},
 			bytesPerPixel = frameBuffer.bytesPerPixel,
 		}
-		drawTriangle(&frameBuffer, &frameBuffer, a, b, c, &color)
+		drawTriangle(&frameBuffer, &zbuffer, a, b, c, &color)
 	}
 
 	writeTgaFile(&frameBuffer, "framebuffer.tga", true, true)
