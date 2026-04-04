@@ -21,9 +21,9 @@ drawObj :: proc() {
 	obj := readObj(filename)
 
 	for face in obj.faces {
-		a := projectVector(obj.vertices[face[0]], width, heigth)
-		b := projectVector(obj.vertices[face[1]], width, heigth)
-		c := projectVector(obj.vertices[face[2]], width, heigth)
+		a := projectVector(perspective(rotateVector(obj.vertices[face[0]])), width, heigth)
+		b := projectVector(perspective(rotateVector(obj.vertices[face[1]])), width, heigth)
+		c := projectVector(perspective(rotateVector(obj.vertices[face[2]])), width, heigth)
 
 		color := TGAColor {
 			bgra          = {
