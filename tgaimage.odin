@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:io"
 import "core:math"
+import "core:math/linalg"
 import "core:mem"
 import "core:os"
 
@@ -36,6 +37,25 @@ TGAImage :: struct {
 	width, height: int,
 	bytesPerPixel: u8,
 	data:          [dynamic]u8,
+}
+
+Perspective := matrix[4, 4]f32{
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+}
+ModelView := matrix[4, 4]f32{
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+}
+Viewport := matrix[4, 4]f32{
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
 }
 
 initTGAImage :: proc(w, h: int, bytesPerPixel: TGAFormat) -> TGAImage {
@@ -348,8 +368,6 @@ flipVertically :: proc(img: ^TGAImage) {
 	}
 }
 
-// END OF library code
-
 drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
 	ax, ay, bx, by := axp, ayp, bxp, byp
 	steep := math.abs(ax - bx) < math.abs(ay - by)
@@ -374,87 +392,110 @@ drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
 	}
 }
 
-// First of all, (x,y) is an orthogonal projection of the vector (x,y,z).
-projectVector :: proc(vec: Vector3, width, height: int) -> [3]int {
-	projection: [3]int = {}
-	// Second, since the input models are scaled to have fit in the [-1,1]^3 world coordinates,
-	projection[0] = int((vec.x + 1.) * f32(width) / 2)
-	// we want to shift the vector (x,y) and then scale it to span the entire screen.
-	projection[1] = int((vec.y + 1.) * f32(height) / 2)
-
-	projection[2] = int((vec.z + 1.) * f32(255) / 2)
-
-	return projection
+perspective :: proc(f: f32) {
+	Perspective = matrix[4, 4]f32{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, -1 / f, 1,
+	}
 }
 
-rotateVector :: proc(value: Vector3) -> Vector3 {
-	// 30 grades
-	angle: f32 = math.PI / 6
-	cos := math.cos_f32(angle)
-	sin := math.sin_f32(angle)
-
-	// rotationMatrix := linalg.matrix3_rotate_f64(a, {0, 1, 0})
-	rotationMatrix := matrix[3, 3]f32{
-		cos, 0, sin,
-		0, 1, 0,
-		-sin, 0, cos,
+viewport :: proc(x, y, w, h: int) {
+	Viewport = matrix[4, 4]f32{
+		f32(w) / 2, 0, 0, f32(x) + f32(w) / 2,
+		0, f32(h) / 2, 0, f32(y) + f32(h) / 2,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
 	}
-
-	return rotationMatrix * value
 }
 
-perspective :: proc(value: Vector3) -> Vector3 {
-	c: f32 = 3
-	return value / (1 - value.z / c)
-}
+lookat :: proc(eye, center, up: Vector3) {
+	n := linalg.normalize(eye - center)
+	l := linalg.normalize(linalg.cross(up, n))
+	m := linalg.normalize(linalg.cross(n, l))
 
-signedTriangleArea :: proc(a, b, c: [2]int) -> f32 {
-	return(
-		0.5 *
-		f32((b.y - a.y) * (b.x + a.x) + (c.y - b.y) * (c.x + b.x) + (a.y - c.y) * (a.x + c.x)) \
-	)
-}
-
-drawTriangle :: proc(img: ^TGAImage, depthMap: ^TGAImage, a, b, c: [3]int, color: ^TGAColor) {
-	boundingBoxMin := [3]int {
-		math.min(math.min(a.x, b.x), c.x),
-		math.min(math.min(a.y, b.y), c.y),
-		0,
-	}
-	boundingBoxMax := [3]int {
-		math.max(math.max(a.x, b.x), c.x),
-		math.max(math.max(a.y, b.y), c.y),
-		0,
-	}
-	totalArea := signedTriangleArea([2]int{a.x, a.y}, [2]int{b.x, b.y}, [2]int{c.x, c.y})
-	if totalArea < 1 {
-		return
-	}
-
-	for x := boundingBoxMin.x; x <= boundingBoxMax.x; x += 1 {
-		for y := boundingBoxMin.y; y <= boundingBoxMax.y; y += 1 {
-			alpha :=
-				signedTriangleArea([2]int{x, y}, [2]int{b.x, b.y}, [2]int{c.x, c.y}) / totalArea
-			beta :=
-				signedTriangleArea([2]int{x, y}, [2]int{c.x, c.y}, [2]int{a.x, a.y}) / totalArea
-			gamma :=
-				signedTriangleArea([2]int{x, y}, [2]int{a.x, a.y}, [2]int{b.x, b.y}) / totalArea
-			if alpha < 0 || beta < 0 || gamma < 0 {
-				continue // negative barycentric coordinate => the pixel is outside the triangle
+	ModelView = matrix[4, 4]f32{
+			l.x, l.y, l.z, 0,
+			m.x, m.y, m.z, 0,
+			n.x, n.y, n.z, 0,
+			0, 0, 0, 1,
+		} * matrix[4, 4]f32{
+				1, 0, 0, -center.x,
+				0, 1, 0, -center.y,
+				0, 0, 1, -center.z,
+				0, 0, 0, 1,
 			}
-			z := alpha * f32(a.z) + beta * f32(b.z) + gamma * f32(c.z)
+}
 
-			if z <= f32(getColor(depthMap, x, y).bgra[0]) {
+drawTriangle :: proc(img: ^TGAImage, depthMap: []f32, clip: [3]Vector4, color: ^TGAColor) {
+	deviceCoordinates := [3]Vector4 {
+		clip[0].xyzw / clip[0].w,
+		clip[1].xyzw / clip[1].w,
+		clip[2].xyzw / clip[2].w,
+	}
+
+	screen := [3]Vector2 {
+		(Viewport * deviceCoordinates[0]).xy,
+		(Viewport * deviceCoordinates[1]).xy,
+		(Viewport * deviceCoordinates[2]).xy,
+	}
+
+	ABC := matrix[3, 3]f32{
+		screen[0].x, screen[0].y, 1,
+		screen[1].x, screen[1].y, 1,
+		screen[2].x, screen[2].y, 1,
+	}
+
+	// ABC := matrix[3, 3]f32{
+	// 	screen[0].x, screen[1].x, screen[2].x,
+	// 	screen[0].y, screen[1].y, screen[2].y,
+	// 	1, 1, 1,
+	// }
+	if linalg.determinant(ABC) < 1 {
+		return // backface culling + discarding triangles that cover less than a pixel
+	}
+
+	boundingBoxMin := Vector2 {
+		math.min(screen[0].x, screen[1].x, screen[2].x),
+		math.min(screen[0].y, screen[1].y, screen[2].y),
+	}
+	boundingBoxMax := Vector2 {
+		math.max(screen[0].x, screen[1].x, screen[2].x),
+		math.max(screen[0].y, screen[1].y, screen[2].y),
+	}
+
+	for x := math.max(boundingBoxMin.x, 0);
+	    x <= math.min(boundingBoxMax.x, f32(img.width - 1));
+	    x += 1 {
+		for y := math.max(boundingBoxMin.y, 0);
+		    y <= math.min(boundingBoxMax.y, f32(img.height - 1));
+		    y += 1 {
+
+			baryCentricScreen: Vector3 = linalg.inverse_transpose(ABC) * Vector3{x, y, 1}
+			baryCentricClip := Vector3 {
+				baryCentricScreen.x / clip[0].w,
+				baryCentricScreen.y / clip[1].w,
+				baryCentricScreen.z / clip[2].w,
+			}
+			baryCentricClip =
+				baryCentricClip / (baryCentricClip.x + baryCentricClip.y + baryCentricClip.z)
+
+			if baryCentricScreen.x < 0 || baryCentricScreen.y < 0 || baryCentricScreen.z < 0 {
 				continue
 			}
 
-			blue := u8(alpha * f32(a.z) + beta * f32(b.z) + gamma * f32(c.z))
-			depthColor := TGAColor {
-				bgra          = [4]u8{u8(z), 0, 0, 0},
-				bytesPerPixel = u8(TGAFormat.GRAYSCALE),
+			z := linalg.dot(
+				baryCentricScreen,
+				Vector3{deviceCoordinates[0].z, deviceCoordinates[1].z, deviceCoordinates[2].z},
+			)
+
+			if (z <= depthMap[int(x + y * f32(img.width))]) {
+				continue
 			}
-			setColor(depthMap, x, y, &depthColor)
-			setColor(img, x, y, color)
+
+			depthMap[int(x + y * f32(img.width))] = z
+			setColor(img, int(x), int(y), color)
 		}
 	}
 }

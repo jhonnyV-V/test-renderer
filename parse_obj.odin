@@ -7,8 +7,9 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
+Vector4 :: [4]f32
 Vector3 :: [3]f32
-Vector2 :: [3]f32
+Vector2 :: [2]f32
 
 Model :: struct {
 	vertices: [dynamic]Vector3,
