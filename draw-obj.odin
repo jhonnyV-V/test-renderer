@@ -1,9 +1,11 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
 import "core:os"
+import "core:slice"
 
 drawObj :: proc() {
 	width := 800
@@ -11,7 +13,13 @@ drawObj :: proc() {
 	filename := "./diablo3_pose/test.obj"
 
 	frameBuffer := initTGAImage(width, heigth, .RGB)
-	zbuffer := make([dynamic]f32, heigth * width)
+	zbuffer := make([]f32, heigth * width)
+	defer delete(zbuffer)
+
+	for i := 0; i < (width * heigth); i += 1 {
+		zbuffer[i] = -f32(math.F32_MAX)
+	}
+	slice.fill(zbuffer, -math.F32_MAX)
 
 	if len(os.args) > 1 && os.args[1] != "" {
 		filename = os.args[1]
@@ -29,6 +37,7 @@ drawObj :: proc() {
 
 	fmt.println("Perspective", Perspective)
 	fmt.println("ModelView", ModelView)
+	fmt.println("Viewport", Viewport)
 	transformation := Perspective * ModelView
 	fmt.println("transformation", transformation)
 

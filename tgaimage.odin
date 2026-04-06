@@ -393,21 +393,35 @@ drawLine :: proc(img: ^TGAImage, axp, ayp, bxp, byp: int, color: ^TGAColor) {
 }
 
 perspective :: proc(f: f32) {
+	// Perspective = matrix[4, 4]f32{
+	// 	1, 0, 0, 0,
+	// 	0, 1, 0, 0,
+	// 	0, 0, 1, 0,
+	// 	0, 0, -1 / f, 1,
+	// }
+
 	Perspective = matrix[4, 4]f32{
 		1, 0, 0, 0,
 		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, -1 / f, 1,
-	}
+		0, 0, 1, -1 / f,
+		0, 0, 0, 1,
+	} // Column 0// Column 1// Column 2 (The -1/f goes in the 4th row of the 3rd column)// Column 3
 }
 
 viewport :: proc(x, y, w, h: int) {
+	// Viewport = matrix[4, 4]f32{
+	// 	f32(w) / 2, 0, 0, f32(x) + f32(w) / 2,
+	// 	0, f32(h) / 2, 0, f32(y) + f32(h) / 2,
+	// 	0, 0, 1, 0,
+	// 	0, 0, 0, 1,
+	// }
+
 	Viewport = matrix[4, 4]f32{
-		f32(w) / 2, 0, 0, f32(x) + f32(w) / 2,
-		0, f32(h) / 2, 0, f32(y) + f32(h) / 2,
+		f32(w) * 0.5, 0, 0, 0,
+		0, f32(h) / 2, 0, 0,
 		0, 0, 1, 0,
-		0, 0, 0, 1,
-	}
+		f32(x) + f32(w) * 5, f32(y) + f32(h) * 0.5, 0, 1,
+	} // Column 0// Column 1// Column 2// Column 3 (Translation)
 }
 
 lookat :: proc(eye, center, up: Vector3) {
@@ -441,17 +455,17 @@ drawTriangle :: proc(img: ^TGAImage, depthMap: []f32, clip: [3]Vector4, color: ^
 		(Viewport * deviceCoordinates[2]).xy,
 	}
 
-	ABC := matrix[3, 3]f32{
-		screen[0].x, screen[0].y, 1,
-		screen[1].x, screen[1].y, 1,
-		screen[2].x, screen[2].y, 1,
-	}
-
 	// ABC := matrix[3, 3]f32{
-	// 	screen[0].x, screen[1].x, screen[2].x,
-	// 	screen[0].y, screen[1].y, screen[2].y,
-	// 	1, 1, 1,
+	// 	screen[0].x, screen[0].y, 1,
+	// 	screen[1].x, screen[1].y, 1,
+	// 	screen[2].x, screen[2].y, 1,
 	// }
+
+	ABC := matrix[3, 3]f32{
+		screen[0].x, screen[1].x, screen[2].x,
+		screen[0].y, screen[1].y, screen[2].y,
+		1, 1, 1,
+	}
 	if linalg.determinant(ABC) < 1 {
 		return // backface culling + discarding triangles that cover less than a pixel
 	}
@@ -481,20 +495,21 @@ drawTriangle :: proc(img: ^TGAImage, depthMap: []f32, clip: [3]Vector4, color: ^
 			baryCentricClip =
 				baryCentricClip / (baryCentricClip.x + baryCentricClip.y + baryCentricClip.z)
 
-			if baryCentricScreen.x < 0 || baryCentricScreen.y < 0 || baryCentricScreen.z < 0 {
+			if baryCentricClip.x < 0 || baryCentricClip.y < 0 || baryCentricClip.z < 0 {
 				continue
 			}
 
 			z := linalg.dot(
-				baryCentricScreen,
+				baryCentricClip,
 				Vector3{deviceCoordinates[0].z, deviceCoordinates[1].z, deviceCoordinates[2].z},
 			)
 
-			if (z <= depthMap[int(x + y * f32(img.width))]) {
+			idx := int(x) + int(y) * int(img.width)
+			if z <= depthMap[idx] { 	// Assuming larger Z is closer, check your projection!
 				continue
 			}
 
-			depthMap[int(x + y * f32(img.width))] = z
+			depthMap[idx] = z
 			setColor(img, int(x), int(y), color)
 		}
 	}
